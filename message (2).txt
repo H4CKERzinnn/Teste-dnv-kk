@@ -22,7 +22,7 @@ local Remote = ReplicatedStorage
 --  SAVE / LOAD
 -- ============================================================
 local SAVE_FILE  = "FourHub_cfg.json"
-local SCRIPT_URL = "https://raw.githubusercontent.com/H4CKERzinnn/Teste-dnv-kk/refs/heads/main/message%20(1).txt"
+local SCRIPT_URL = "https://raw.githubusercontent.com/H4CKERzinnn/Teste-dnv-kk/refs/heads/main/message%20(2).txt"
 
 -- Comando que o autoexec vai executar — igual ao v3.0 que funcionava
 local AUTOEXEC_CMD = string.format(
