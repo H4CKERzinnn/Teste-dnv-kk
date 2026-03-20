@@ -1,0 +1,908 @@
+-- ============================================================
+--  FOUR HUB v4.8
+-- ============================================================
+
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local UserInputService  = game:GetService("UserInputService")
+local TweenService      = game:GetService("TweenService")
+local HttpService       = game:GetService("HttpService")
+local TeleportService   = game:GetService("TeleportService")
+local StarterGui        = game:GetService("StarterGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Player    = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+local Remote = ReplicatedStorage
+    :WaitForChild("ffrostflame_bridgenet2@1.0.0")
+    :WaitForChild("dataRemoteEvent")
+
+-- ============================================================
+--  SAVE / LOAD
+-- ============================================================
+local SAVE_FILE  = "FourHub_cfg.json"
+local SCRIPT_URL = "https://raw.githubusercontent.com/H4CKERzinnn/Teste-dnv-kk/refs/heads/main/message%20(1).txt"
+
+-- Comando que o autoexec vai executar — igual ao v3.0 que funcionava
+local AUTOEXEC_CMD = string.format(
+    'repeat task.wait() until game:IsLoaded(); loadstring(game:HttpGet("%s"))()',
+    SCRIPT_URL
+)
+
+local cfg = {}
+
+local function saveConfig()
+    if not writefile then return end
+    pcall(function() writefile(SAVE_FILE, HttpService:JSONEncode(cfg)) end)
+end
+
+local function loadConfig()
+    if not readfile or not isfile then return end
+    pcall(function()
+        if isfile(SAVE_FILE) then
+            local data = HttpService:JSONDecode(readfile(SAVE_FILE))
+            if type(data) == "table" then cfg = data end
+        end
+    end)
+end
+
+local function cfgGet(k, def)
+    return cfg[k] ~= nil and cfg[k] or def
+end
+local function cfgSet(k, v)
+    cfg[k] = v
+    saveConfig()  -- salva imediatamente sempre que qualquer opção muda
+end
+
+-- Carrega ANTES de qualquer variável ser inicializada
+loadConfig()
+
+-- ============================================================
+--  AUTOEXEC — instala na pasta autoexec do executor
+-- ============================================================
+local function instalarAutoexec()
+    if not writefile then return false end
+    pcall(function() makefolder("autoexec") end)
+    local ok = false
+    for _, path in ipairs({"autoexec/FourHub_AutoExec.lua", "FourHub_AutoExec.lua"}) do
+        if pcall(writefile, path, AUTOEXEC_CMD) then
+            ok = true
+            print("[4H] AutoExec gravado em: " .. path)
+        end
+    end
+    if queue_on_teleport then
+        pcall(queue_on_teleport, AUTOEXEC_CMD)
+        print("[4H] queue_on_teleport registrado!")
+    end
+    return ok
+end
+
+task.spawn(function()
+    task.wait(1)
+    instalarAutoexec()
+end)
+
+-- ============================================================
+--  NOTIFICAÇÃO
+-- ============================================================
+local function notify(title, text, dur)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {Title=title, Text=text, Duration=dur or 3})
+    end)
+end
+
+-- ============================================================
+--  REMOTES
+-- ============================================================
+local RAID_PLACE_ID    = 10301056827
+local DUNGEON_PLACE_ID = 4286839868
+local RAID_MAP         = "TitanTown"
+local DUNGEON_MAP      = "CrystalCave"
+local SLOTS            = 6
+local TP_DELAY         = 3
+local CREATE_DELAY     = 3 + math.random() * 2
+
+local function createRaid()
+    pcall(function() Remote:FireServer({{{"GamemodeSystem","Create","Raid",RAID_MAP,"Easy",n=SLOTS},"\002"}}) end)
+end
+local function startRaid()
+    pcall(function() Remote:FireServer({{{"GamemodeSystem","Start","Raid",RAID_PLACE_ID,n=4},"\002"}}) end)
+end
+local function createDungeon()
+    pcall(function() Remote:FireServer({{{"GamemodeSystem","Create","Dungeon",DUNGEON_MAP,"Easy",n=SLOTS},"\002"}}) end)
+end
+local function startDungeon()
+    pcall(function() Remote:FireServer({{{"GamemodeSystem","Start","Dungeon",DUNGEON_PLACE_ID,n=4},"\002"}}) end)
+end
+local function exitToLobby()
+    pcall(function() Remote:FireServer({{{"TeleportSystem","To","Lobby",n=3},"\002"}}) end)
+end
+
+-- ============================================================
+--  DETECÇÃO DE LOBBY
+-- ============================================================
+local ENEMIES_FOLDER = workspace:WaitForChild("_ENEMIES"):WaitForChild("Client")
+
+local function isInLobby()
+    for _, v in ipairs(ENEMIES_FOLDER:GetChildren()) do
+        if v:IsA("Model") then return false end
+    end
+    return true
+end
+
+-- ============================================================
+--  AUTO TP
+-- ============================================================
+local tpEnabled   = cfgGet("tpEnabled", false)
+local TP_MIN_DIST = cfgGet("tpMinDist", 14)
+local TP_OFFSET   = cfgGet("tpOffset", 4)
+
+local character = Player.Character or Player.CharacterAdded:Wait()
+local rootPart  = character:WaitForChild("HumanoidRootPart")
+
+Player.CharacterAdded:Connect(function(c)
+    character = c
+    rootPart  = c:WaitForChild("HumanoidRootPart")
+end)
+
+RunService.Heartbeat:Connect(function()
+    if not tpEnabled then return end
+    if not rootPart or not rootPart.Parent then return end
+    local closest, smallestDist = nil, math.huge
+    for _, model in ipairs(ENEMIES_FOLDER:GetChildren()) do
+        if not model:IsA("Model") then continue end
+        local tp = model:FindFirstChild("HumanoidRootPart")
+                or model:FindFirstChild("Torso")
+                or model.PrimaryPart
+                or model:FindFirstChildWhichIsA("BasePart")
+        if not tp then continue end
+        if tp.Position.Y < -200 then continue end
+        local dist = (tp.Position - rootPart.Position).Magnitude
+        if dist < smallestDist then smallestDist = dist; closest = tp end
+    end
+    if not closest or smallestDist < TP_MIN_DIST then return end
+    local dir = (rootPart.Position - closest.Position).Unit
+    rootPart.CFrame = CFrame.new(closest.Position + dir * TP_OFFSET, closest.Position)
+end)
+
+-- ============================================================
+--  AUTO RAID/DG
+-- ============================================================
+local rdRunning = false
+local rdThread  = nil
+local rdMode    = cfgGet("rdMode", "Ambos")
+local RUN_TIME  = 10 * 60
+
+local function returnVisible()
+    for _, gui in ipairs(PlayerGui:GetChildren()) do
+        if gui.Name == "FourHubGUI" then continue end
+        for _, desc in ipairs(gui:GetDescendants()) do
+            if desc:IsA("TextButton") and desc.Text:upper():find("RETURN") then return true end
+        end
+    end
+    return false
+end
+
+local function clickReturn()
+    for _, gui in ipairs(PlayerGui:GetChildren()) do
+        if gui.Name == "FourHubGUI" then continue end
+        for _, desc in ipairs(gui:GetDescendants()) do
+            if desc:IsA("TextButton") and desc.Text:upper():find("RETURN") then
+                pcall(function() desc.MouseButton1Click:Fire() end)
+                pcall(function() desc.Activated:Fire() end)
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function handleReturn()
+    local t = 0
+    while rdRunning and not returnVisible() and t < 60 do task.wait(0.5); t += 0.5 end
+    local attempts = 0
+    while rdRunning and returnVisible() and attempts < 20 do
+        clickReturn(); task.wait(0.8); attempts += 1
+    end
+    task.wait(0.5)
+end
+
+local function rdLoop()
+    local isRaid = (rdMode ~= "Dungeon")
+    while rdRunning do
+        local doRaid = (rdMode == "Raid") or (rdMode == "Ambos" and isRaid)
+        if doRaid then createRaid(); task.wait(CREATE_DELAY); startRaid()
+        else            createDungeon(); task.wait(CREATE_DELAY); startDungeon() end
+        for i = 1, RUN_TIME do
+            if not rdRunning then break end
+            task.wait(1)
+        end
+        if not rdRunning then break end
+        handleReturn()
+        if not rdRunning then break end
+        exitToLobby(); task.wait(TP_DELAY)
+        local w = 0
+        while not isInLobby() and w < 30 do task.wait(1); w += 1 end
+        task.wait(2)
+        if rdMode == "Ambos" then isRaid = not isRaid end
+        task.wait(1)
+    end
+end
+
+-- ============================================================
+--  AVATAR GACHA
+-- ============================================================
+local AVATAR_ITEMS = {
+    "AlphaCore","ForceField","Phantom","BlackHaki","Electric6","Shirayuki",
+    "DarkFruit","SRank","Flame","Singularity","Blessed6","Sonic",
+    "OperationFruit","Haunt5","EvilEye","Visored","N6","Jupiter","Ackerman",
+    "Blessing5","Secret","Earth","RedHaki","Holy","DragonFruit","Mist",
+    "PhoenixFruit","Ruin6","Yeager","ColossalSerum","AdaptiveCore","TurboGranny",
+    "Haunt6","TrueQuincy","Ruin5","Afterlife","N9","Blessed5","Nozarashi",
+    "Electric5","National","Mythical","Blessing","Blessing6","AttackSerum"
+}
+
+local stopOnItem     = {}
+local avatarRunning  = false
+local avatarThread   = nil
+local avatarSpins    = 0
+local avatarCategory = cfgGet("avatarCat", "Classic")
+local avatarGot      = {}
+
+for _, v in ipairs(AVATAR_ITEMS) do
+    stopOnItem[v] = cfgGet("stop_" .. v, true)
+end
+
+Remote.OnClientEvent:Connect(function(args)
+    pcall(function()
+        local d = args and args[1] and args[1][1]
+        if not d then return end
+        local name = d.Item or d.Result or d.Reward or d.AvatarName
+        if name and stopOnItem[tostring(name)] then avatarGot[tostring(name)] = true end
+        if type(d) == "table" then
+            for k, v in pairs(d) do
+                if v == true and stopOnItem[tostring(k)] then avatarGot[tostring(k)] = true end
+            end
+        end
+    end)
+end)
+
+local VALID_AURAS = {"destroyer","rimuru"}
+local bannerActive = false
+
+local function isValidAura(name)
+    local n = tostring(name):lower()
+    for _, a in ipairs(VALID_AURAS) do if n == a or n:find(a) then return true end end
+    return false
+end
+
+local function scanInst(inst, depth)
+    if depth > 4 or not inst then return false end
+    if isValidAura(inst.Name) then return true end
+    pcall(function()
+        for k, v in pairs(inst:GetAttributes()) do
+            if isValidAura(tostring(k)) or isValidAura(tostring(v)) then bannerActive = true end
+        end
+    end)
+    for _, child in ipairs(inst:GetChildren()) do
+        if child:IsA("StringValue") and isValidAura(child.Value) then return true end
+        if isValidAura(child.Name) then return true end
+        if scanInst(child, depth + 1) then return true end
+    end
+    return false
+end
+
+local function destroyerEquipped()
+    if bannerActive then return true end
+    for _, attr in ipairs({"CurrentBanner","ActiveBanner","ShopAvatar","BannerAvatar","FeaturedAvatar","AvatarBanner","Banner","CurrentAvatar"}) do
+        local a = Player:GetAttribute(attr)
+        if a and isValidAura(tostring(a)) then return true end
+    end
+    for _, fn in ipairs({"__Assets","__Shops","__Banners","__Store","__Gacha","AvatarShop","AvatarBanner","GachaData","ShopData","CurrentBanner"}) do
+        local f = ReplicatedStorage:FindFirstChild(fn, true)
+        if f and scanInst(f, 0) then return true end
+    end
+    for _, gui in ipairs(PlayerGui:GetChildren()) do
+        if gui.Name == "FourHubGUI" then continue end
+        if scanInst(gui, 0) then return true end
+    end
+    return false
+end
+
+do
+    local function deepSearch(t, depth)
+        if depth > 5 then return end
+        if type(t) == "string" then if isValidAura(t) then bannerActive = true end; return end
+        if type(t) == "table" then
+            for k, v in pairs(t) do
+                if isValidAura(tostring(k)) then bannerActive = true end
+                deepSearch(v, depth + 1)
+            end
+        end
+    end
+    Remote.OnClientEvent:Connect(function(args) pcall(function() deepSearch(args, 0) end) end)
+end
+task.spawn(function() while true do task.wait(60); bannerActive = false end end)
+
+-- toggleRefs guarda referência de cada toggle incluindo o callback
+local toggleRefs = {}
+
+local function doSpin()
+    local filterTable = {}
+    for item, en in pairs(stopOnItem) do if en then filterTable[item] = true end end
+    pcall(function() Remote:FireServer({{{"GachaSystem","Spin","Avatar",avatarCategory,filterTable,n=6},"\002"}}) end)
+    avatarSpins += 1
+end
+
+local function avatarLoop()
+    avatarSpins = 0; avatarGot = {}
+    while avatarRunning do
+        if not destroyerEquipped() then task.wait(1); continue end
+        for item, got in pairs(avatarGot) do
+            if got and stopOnItem[item] then
+                avatarRunning = false
+                notify("Avatar Gacha","🎉 Obtido: "..item.." | Spins: "..avatarSpins, 10)
+                pcall(function()
+                    local r = toggleRefs["avatarAuto"]
+                    if r then
+                        r.state = false
+                        TweenService:Create(r.track,TweenInfo.new(0.15),{BackgroundColor3=Color3.fromRGB(190,55,55)}):Play()
+                        TweenService:Create(r.knob, TweenInfo.new(0.15),{Position=UDim2.new(0,2,0.5,-8)}):Play()
+                    end
+                end)
+                return
+            end
+        end
+        doSpin(); task.wait(0.35)
+    end
+end
+
+-- ============================================================
+--  ANTI AFK / FPS
+-- ============================================================
+local antiAFKConn = nil
+local function fpsBoost()
+    pcall(function()
+        game.Lighting.GlobalShadows = false; game.Lighting.Brightness = 2
+        for _, v in pairs(workspace:GetDescendants()) do
+            pcall(function()
+                if v:IsA("ParticleEmitter") or v:IsA("Smoke") or v:IsA("Fire") then v.Enabled = false end
+            end)
+        end
+    end)
+end
+
+-- ============================================================
+--  UI
+-- ============================================================
+local old = PlayerGui:FindFirstChild("FourHubGUI")
+if old then old:Destroy() end
+
+local GUI = Instance.new("ScreenGui")
+GUI.Name = "FourHubGUI"; GUI.ResetOnSpawn = false
+GUI.DisplayOrder = 200; GUI.IgnoreGuiInset = true
+GUI.ZIndexBehavior = Enum.ZIndexBehavior.Global
+GUI.Parent = PlayerGui
+
+local C = {
+    bg=Color3.fromRGB(15,15,22),      sidebar=Color3.fromRGB(11,11,17),
+    content=Color3.fromRGB(19,19,28), header=Color3.fromRGB(10,10,15),
+    accent=Color3.fromRGB(90,165,255), accent2=Color3.fromRGB(55,115,210),
+    text=Color3.fromRGB(220,220,230), sub=Color3.fromRGB(130,130,155),
+    on=Color3.fromRGB(45,195,95),     off=Color3.fromRGB(190,55,55),
+    btn=Color3.fromRGB(26,26,38),     btnhov=Color3.fromRGB(36,36,54),
+    div=Color3.fromRGB(32,32,48),     tabact=Color3.fromRGB(30,30,46),
+}
+
+local HW, HH = 530, 430
+local TAB_W  = 108
+local HEAD_H = 36
+
+local Win = Instance.new("Frame")
+Win.Name = "Win"; Win.Size = UDim2.new(0,HW,0,HH)
+Win.Position = UDim2.new(0.5,-HW/2,0.5,-HH/2)
+Win.BackgroundColor3 = C.bg; Win.BorderSizePixel = 0
+Win.ClipsDescendants = true; Win.Parent = GUI
+do local r = Instance.new("UICorner"); r.CornerRadius = UDim.new(0,10); r.Parent = Win end
+do local s = Instance.new("UIStroke"); s.Color = C.accent2; s.Thickness = 1.2; s.Transparency = 0.4; s.Parent = Win end
+
+local Head = Instance.new("Frame")
+Head.Name = "Head"; Head.Size = UDim2.new(1,0,0,HEAD_H)
+Head.BackgroundColor3 = C.header; Head.BorderSizePixel = 0; Head.ZIndex = 10; Head.Parent = Win
+
+local TitleLbl = Instance.new("TextLabel")
+TitleLbl.Size = UDim2.new(1,-80,1,0); TitleLbl.Position = UDim2.new(0,12,0,0)
+TitleLbl.BackgroundTransparency = 1; TitleLbl.Font = Enum.Font.GothamBold
+TitleLbl.Text = "FOUR HUB  v4.8"; TitleLbl.TextColor3 = C.accent
+TitleLbl.TextSize = 15; TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+TitleLbl.ZIndex = 11; TitleLbl.Parent = Head
+
+local function makeHeaderBtn(text, xOff, color)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0,26,0,26); b.Position = UDim2.new(1,xOff,0.5,-13)
+    b.BackgroundColor3 = color; b.BorderSizePixel = 0; b.Text = text
+    b.Font = Enum.Font.GothamBold; b.TextColor3 = Color3.new(1,1,1)
+    b.TextSize = 14; b.AutoButtonColor = true; b.ZIndex = 12; b.Parent = Head
+    Instance.new("UICorner",b).CornerRadius = UDim.new(0,5); return b
+end
+local CloseBtn = makeHeaderBtn("✕",-32,Color3.fromRGB(180,50,50))
+local MinBtn   = makeHeaderBtn("−",-62,Color3.fromRGB(55,55,75))
+
+do
+    local dr = false; local ds, sp
+    Head.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+            dr=true; ds=i.Position; sp=Win.Position end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if not dr then return end
+        if i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch then
+            local d=i.Position-ds; Win.Position=UDim2.new(sp.X.Scale,sp.X.Offset+d.X,sp.Y.Scale,sp.Y.Offset+d.Y) end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dr=false end
+    end)
+end
+
+local Sidebar = Instance.new("Frame")
+Sidebar.Size = UDim2.new(0,TAB_W,1,-HEAD_H); Sidebar.Position = UDim2.new(0,0,0,HEAD_H)
+Sidebar.BackgroundColor3 = C.sidebar; Sidebar.BorderSizePixel = 0; Sidebar.ZIndex = 5; Sidebar.Parent = Win
+local SideList = Instance.new("UIListLayout")
+SideList.SortOrder = Enum.SortOrder.LayoutOrder; SideList.Padding = UDim.new(0,3); SideList.Parent = Sidebar
+do local p = Instance.new("UIPadding",Sidebar); p.PaddingTop=UDim.new(0,6); p.PaddingLeft=UDim.new(0,3); p.PaddingRight=UDim.new(0,3) end
+
+local Div = Instance.new("Frame")
+Div.Size = UDim2.new(0,1,1,-HEAD_H); Div.Position = UDim2.new(0,TAB_W,0,HEAD_H)
+Div.BackgroundColor3 = C.div; Div.BorderSizePixel = 0; Div.ZIndex = 4; Div.Parent = Win
+
+local Content = Instance.new("Frame")
+Content.Size = UDim2.new(1,-TAB_W,1,-HEAD_H); Content.Position = UDim2.new(0,TAB_W,0,HEAD_H)
+Content.BackgroundColor3 = C.content; Content.BorderSizePixel = 0
+Content.ClipsDescendants = true; Content.ZIndex = 3; Content.Parent = Win
+
+local function corner(p,r) local c=Instance.new("UICorner"); c.CornerRadius=UDim.new(0,r or 6); c.Parent=p end
+local function pad(p,t,b,l,r)
+    local x=Instance.new("UIPadding")
+    x.PaddingTop=UDim.new(0,t or 0); x.PaddingBottom=UDim.new(0,b or 0)
+    x.PaddingLeft=UDim.new(0,l or 0); x.PaddingRight=UDim.new(0,r or 0); x.Parent=p
+end
+local function makeScroll()
+    local sf=Instance.new("ScrollingFrame")
+    sf.Size=UDim2.new(1,0,1,0); sf.BackgroundTransparency=1
+    sf.BorderSizePixel=0; sf.ScrollBarThickness=3
+    sf.ScrollBarImageColor3=C.accent2; sf.CanvasSize=UDim2.new(0,0,0,0)
+    sf.AutomaticCanvasSize=Enum.AutomaticSize.Y; sf.ZIndex=4
+    local list=Instance.new("UIListLayout")
+    list.SortOrder=Enum.SortOrder.LayoutOrder; list.Padding=UDim.new(0,5); list.Parent=sf
+    pad(sf,8,8,8,6); return sf
+end
+local function mkSection(parent,text,order)
+    local f=Instance.new("Frame")
+    f.Size=UDim2.new(1,0,0,26); f.BackgroundTransparency=1; f.LayoutOrder=order; f.ZIndex=5; f.Parent=parent
+    local l=Instance.new("TextLabel",f)
+    l.Size=UDim2.new(1,-4,1,0); l.BackgroundTransparency=1; l.Font=Enum.Font.GothamBold
+    l.Text=text; l.TextColor3=C.accent; l.TextSize=11; l.TextXAlignment=Enum.TextXAlignment.Left; l.ZIndex=5
+    local line=Instance.new("Frame",f)
+    line.Size=UDim2.new(1,0,0,1); line.Position=UDim2.new(0,0,1,-1)
+    line.BackgroundColor3=C.div; line.BorderSizePixel=0; line.ZIndex=5
+end
+local function mkBtn(parent,text,cb,order)
+    local b=Instance.new("TextButton")
+    b.Size=UDim2.new(1,0,0,32); b.BackgroundColor3=C.btn; b.BorderSizePixel=0
+    b.Font=Enum.Font.Gotham; b.Text=text; b.TextColor3=C.text; b.TextSize=12
+    b.AutoButtonColor=false; b.LayoutOrder=order; b.ZIndex=5; b.Parent=parent; corner(b,6)
+    b.MouseEnter:Connect(function() TweenService:Create(b,TweenInfo.new(0.1),{BackgroundColor3=C.btnhov}):Play() end)
+    b.MouseLeave:Connect(function() TweenService:Create(b,TweenInfo.new(0.1),{BackgroundColor3=C.btn}):Play() end)
+    b.MouseButton1Click:Connect(function() pcall(cb) end)
+    b.TouchTap:Connect(function() pcall(cb) end)
+    return b
+end
+
+-- mkToggle: salva no JSON ao mudar, guarda cb no ref para restaurar após rejoin
+local function mkToggle(parent,label,id,default,cb,order)
+    local state = cfgGet(id, default)
+    local row = Instance.new("Frame")
+    row.Size=UDim2.new(1,0,0,34); row.BackgroundColor3=C.btn; row.BorderSizePixel=0
+    row.LayoutOrder=order; row.ZIndex=5; row.Parent=parent; corner(row,6)
+    local lbl = Instance.new("TextLabel",row)
+    lbl.Size=UDim2.new(1,-56,1,0); lbl.Position=UDim2.new(0,9,0,0)
+    lbl.BackgroundTransparency=1; lbl.Font=Enum.Font.Gotham; lbl.Text=label
+    lbl.TextColor3=C.text; lbl.TextSize=12; lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.ZIndex=5
+    local track = Instance.new("Frame",row)
+    track.Size=UDim2.new(0,38,0,20); track.Position=UDim2.new(1,-46,0.5,-10)
+    track.BackgroundColor3=state and C.on or C.off; track.BorderSizePixel=0; track.ZIndex=6; corner(track,10)
+    local knob = Instance.new("Frame",track)
+    knob.Size=UDim2.new(0,16,0,16)
+    knob.Position=state and UDim2.new(1,-18,0.5,-8) or UDim2.new(0,2,0.5,-8)
+    knob.BackgroundColor3=Color3.new(1,1,1); knob.BorderSizePixel=0; knob.ZIndex=7; corner(knob,8)
+    -- cb salvo no ref para o bloco de restauração chamar depois do rejoin
+    local ref = {track=track, knob=knob, state=state, cb=cb}
+    toggleRefs[id] = ref
+    local function toggle()
+        ref.state = not ref.state
+        cfgSet(id, ref.state)  -- salva imediatamente
+        TweenService:Create(track,TweenInfo.new(0.15),{BackgroundColor3=ref.state and C.on or C.off}):Play()
+        TweenService:Create(knob, TweenInfo.new(0.15),{Position=ref.state and UDim2.new(1,-18,0.5,-8) or UDim2.new(0,2,0.5,-8)}):Play()
+        pcall(cb, ref.state)
+    end
+    local hit = Instance.new("TextButton",row)
+    hit.Size=UDim2.new(1,0,1,0); hit.BackgroundTransparency=1; hit.Text=""; hit.ZIndex=8
+    hit.MouseButton1Click:Connect(toggle); hit.TouchTap:Connect(toggle)
+    -- NÃO dispara cb aqui — o bloco de restauração faz isso depois da UI toda pronta
+    return ref
+end
+
+local function mkDropdown(parent,label,options,default,cb,id,order)
+    local current = cfgGet(id, default)
+    if not table.find(options, current) then current = default end
+    local row=Instance.new("Frame")
+    row.Size=UDim2.new(1,0,0,34); row.BackgroundColor3=C.btn; row.BorderSizePixel=0
+    row.LayoutOrder=order; row.ZIndex=5; row.Parent=parent; corner(row,6)
+    local lbl=Instance.new("TextLabel",row)
+    lbl.Size=UDim2.new(0.45,0,1,0); lbl.Position=UDim2.new(0,9,0,0)
+    lbl.BackgroundTransparency=1; lbl.Font=Enum.Font.Gotham; lbl.Text=label
+    lbl.TextColor3=C.sub; lbl.TextSize=12; lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.ZIndex=5
+    local valBtn=Instance.new("TextButton",row)
+    valBtn.Size=UDim2.new(0.5,-4,0,24); valBtn.Position=UDim2.new(0.5,2,0.5,-12)
+    valBtn.BackgroundColor3=Color3.fromRGB(28,28,42); valBtn.BorderSizePixel=0
+    valBtn.Font=Enum.Font.Gotham; valBtn.Text=tostring(current).."  ▾"
+    valBtn.TextColor3=C.text; valBtn.TextSize=12; valBtn.AutoButtonColor=false; valBtn.ZIndex=6; corner(valBtn,5)
+    do local s=Instance.new("UIStroke",valBtn); s.Color=C.div; s.Thickness=1 end
+    local menuH=#options*28+6
+    local menu=Instance.new("Frame",GUI)
+    menu.BackgroundColor3=Color3.fromRGB(22,22,32); menu.BorderSizePixel=0
+    menu.Visible=false; menu.ZIndex=200; corner(menu,6)
+    do local s=Instance.new("UIStroke",menu); s.Color=C.accent2; s.Thickness=1; s.Transparency=0.3 end
+    local mList=Instance.new("UIListLayout",menu)
+    mList.SortOrder=Enum.SortOrder.LayoutOrder; mList.Padding=UDim.new(0,0); pad(menu,3,3,3,3)
+    for _,opt in ipairs(options) do
+        local ob=Instance.new("TextButton",menu)
+        ob.Size=UDim2.new(1,0,0,26); ob.BackgroundTransparency=1; ob.BorderSizePixel=0
+        ob.Font=Enum.Font.Gotham; ob.Text=tostring(opt); ob.TextColor3=C.text
+        ob.TextSize=12; ob.AutoButtonColor=false; ob.ZIndex=201; corner(ob,4)
+        ob.MouseEnter:Connect(function() ob.BackgroundTransparency=0; ob.BackgroundColor3=C.btnhov end)
+        ob.MouseLeave:Connect(function() ob.BackgroundTransparency=1 end)
+        local function pick()
+            current=opt; cfgSet(id,opt); valBtn.Text=tostring(opt).."  ▾"
+            menu.Visible=false; pcall(cb,opt)
+        end
+        ob.MouseButton1Click:Connect(pick); ob.TouchTap:Connect(pick)
+    end
+    local menuOpen=false
+    local function toggleMenu()
+        menuOpen=not menuOpen
+        if menuOpen then
+            local abs=valBtn.AbsolutePosition; local sz=valBtn.AbsoluteSize
+            local vp=GUI.AbsoluteSize
+            local spaceBelow=vp.Y-(abs.Y+sz.Y)
+            local yPos=spaceBelow>=menuH and abs.Y+sz.Y+2 or abs.Y-menuH-2
+            menu.Size=UDim2.new(0,sz.X,0,menuH); menu.Position=UDim2.new(0,abs.X,0,yPos)
+        end
+        menu.Visible=menuOpen
+    end
+    valBtn.MouseButton1Click:Connect(toggleMenu); valBtn.TouchTap:Connect(toggleMenu)
+    UserInputService.InputBegan:Connect(function(i)
+        if not menuOpen then return end
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+            task.wait(); if menuOpen then menu.Visible=false; menuOpen=false end
+        end
+    end)
+    pcall(cb, current); return row
+end
+
+local function mkSlider(parent,label,id,mn,mx,step,def,applyFn,order)
+    local val=math.clamp(cfgGet(id,def),mn,mx)
+    local row=Instance.new("Frame")
+    row.Size=UDim2.new(1,0,0,46); row.BackgroundColor3=C.btn; row.BorderSizePixel=0
+    row.LayoutOrder=order; row.ZIndex=5; row.Parent=parent; corner(row,6)
+    local lbl=Instance.new("TextLabel",row)
+    lbl.Size=UDim2.new(1,0,0,18); lbl.Position=UDim2.new(0,9,0,4)
+    lbl.BackgroundTransparency=1; lbl.Font=Enum.Font.Gotham
+    lbl.Text=label..": "..val; lbl.TextColor3=C.text; lbl.TextSize=12
+    lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.ZIndex=5
+    local function upd(nv)
+        val=math.clamp(math.floor((nv/step+0.5))*step,mn,mx)
+        lbl.Text=label..": "..val; cfgSet(id,val); pcall(applyFn,val)
+    end
+    local minus=Instance.new("TextButton",row)
+    minus.Size=UDim2.new(0,28,0,18); minus.Position=UDim2.new(0,9,1,-24)
+    minus.BackgroundColor3=Color3.fromRGB(32,32,48); minus.BorderSizePixel=0
+    minus.Text="−"; minus.Font=Enum.Font.GothamBold; minus.TextColor3=C.text
+    minus.TextSize=16; minus.AutoButtonColor=true; minus.ZIndex=6; corner(minus,4)
+    local plus=Instance.new("TextButton",row)
+    plus.Size=UDim2.new(0,28,0,18); plus.Position=UDim2.new(0,41,1,-24)
+    plus.BackgroundColor3=Color3.fromRGB(32,32,48); plus.BorderSizePixel=0
+    plus.Text="+"; plus.Font=Enum.Font.GothamBold; plus.TextColor3=C.text
+    plus.TextSize=16; plus.AutoButtonColor=true; plus.ZIndex=6; corner(plus,4)
+    local trk=Instance.new("TextButton",row)
+    trk.Size=UDim2.new(1,-82,0,6); trk.Position=UDim2.new(0,76,1,-16)
+    trk.BackgroundColor3=C.div; trk.BorderSizePixel=0; trk.Text=""
+    trk.AutoButtonColor=false; trk.ZIndex=6; corner(trk,3)
+    local fill=Instance.new("Frame",trk)
+    fill.Size=UDim2.new((val-mn)/(mx-mn),0,1,0)
+    fill.BackgroundColor3=C.accent; fill.BorderSizePixel=0; fill.ZIndex=7; corner(fill,3)
+    local function rfill()
+        TweenService:Create(fill,TweenInfo.new(0.1),{Size=UDim2.new((val-mn)/(mx-mn),0,1,0)}):Play()
+    end
+    minus.MouseButton1Click:Connect(function() upd(val-step); rfill() end)
+    plus.MouseButton1Click:Connect(function()  upd(val+step); rfill() end)
+    minus.TouchTap:Connect(function() upd(val-step); rfill() end)
+    plus.TouchTap:Connect(function()  upd(val+step); rfill() end)
+    local tDrag=false
+    trk.MouseButton1Down:Connect(function() tDrag=true end)
+    UserInputService.InputChanged:Connect(function(i)
+        if not tDrag then return end
+        if i.UserInputType==Enum.UserInputType.MouseMovement then
+            local rel=math.clamp((i.Position.X-trk.AbsolutePosition.X)/trk.AbsoluteSize.X,0,1)
+            upd(mn+(mx-mn)*rel); rfill()
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 then tDrag=false end
+    end)
+    pcall(applyFn,val); return row
+end
+
+local tabList={}; local activeTab=nil
+local function makeTab(icon,label)
+    local tb=Instance.new("TextButton")
+    tb.Size=UDim2.new(1,0,0,34); tb.BackgroundColor3=C.sidebar; tb.BorderSizePixel=0
+    tb.Font=Enum.Font.Gotham; tb.Text=icon.."  "..label; tb.TextColor3=C.sub
+    tb.TextSize=12; tb.TextXAlignment=Enum.TextXAlignment.Left
+    tb.AutoButtonColor=false; tb.ZIndex=6; corner(tb,6); pad(tb,0,0,8,0); tb.Parent=Sidebar
+    local page=Instance.new("Frame",Content)
+    page.Size=UDim2.new(1,0,1,0); page.BackgroundTransparency=1; page.Visible=false; page.ZIndex=4
+    local scroll=makeScroll(); scroll.Parent=page
+    local tab={btn=tb,page=page,scroll=scroll}
+    table.insert(tabList,tab)
+    local function activate()
+        if activeTab==tab then return end
+        if activeTab then activeTab.page.Visible=false; activeTab.btn.BackgroundColor3=C.sidebar; activeTab.btn.TextColor3=C.sub end
+        activeTab=tab; page.Visible=true; tb.BackgroundColor3=C.tabact; tb.TextColor3=C.accent
+    end
+    tb.MouseButton1Click:Connect(activate); tb.TouchTap:Connect(activate); tab.activate=activate
+    return tab
+end
+
+-- ============================================================
+--  ABAS
+-- ============================================================
+
+-- ABA 1: RAID/DG
+local t1=makeTab("⚔","Raid/DG"); local s1=t1.scroll
+mkSection(s1,"MODO DE FARM",1)
+mkDropdown(s1,"Modo",{"Ambos","Raid","Dungeon"},rdMode,function(v) rdMode=v; cfgSet("rdMode",v) end,"rdMode",2)
+mkSection(s1,"AUTO INFINITO",3)
+mkToggle(s1,"Auto Raid/Dungeon Infinito","rdAuto",false,function(state)
+    rdRunning=state
+    if state then rdThread=task.spawn(rdLoop); notify("Auto Farm","▶ Modo: "..rdMode)
+    else
+        if rdThread then pcall(function() task.cancel(rdThread) end); rdThread=nil end
+        rdRunning=false; notify("Auto Farm","⏹ Parado")
+    end
+end,4)
+mkSection(s1,"MANUAL",5)
+mkBtn(s1,"Criar Raid",      function() createRaid();    notify("Raid","Criada!") end,6)
+mkBtn(s1,"Iniciar Raid",    function() startRaid();     notify("Raid","Iniciada!") end,7)
+mkBtn(s1,"Criar Dungeon",   function() createDungeon(); notify("Dungeon","Criada!") end,8)
+mkBtn(s1,"Iniciar Dungeon", function() startDungeon();  notify("Dungeon","Iniciada!") end,9)
+mkBtn(s1,"→ Sair p/ Lobby", function() exitToLobby();   notify("TP","→ Lobby") end,10)
+
+-- ABA 2: GACHA
+local t2=makeTab("✦","Gacha"); local s2=t2.scroll
+mkSection(s2,"CONFIGURAÇÃO",1)
+mkDropdown(s2,"Categoria",{"Classic","Premium","Event"},avatarCategory,function(v) avatarCategory=v; cfgSet("avatarCat",v) end,"avatarCat",2)
+mkSection(s2,"AUTO SPIN",3)
+do
+    local info=Instance.new("TextLabel")
+    info.Size=UDim2.new(1,0,0,36); info.BackgroundColor3=Color3.fromRGB(20,30,20)
+    info.BorderSizePixel=0; info.Font=Enum.Font.Gotham
+    info.Text="🔍 Gira quando Destroyer/Rimuru aparecer no banner\n🛑 Itens abaixo = param o spin ao obter"
+    info.TextColor3=Color3.fromRGB(160,220,160); info.TextSize=11
+    info.TextWrapped=true; info.LayoutOrder=3; info.ZIndex=5; info.Parent=s2; corner(info,6)
+end
+mkToggle(s2,"Auto Spin (requer Destroyer/Rimuru)","avatarAuto",false,function(state)
+    avatarRunning=state
+    if state then
+        avatarGot={}; avatarThread=task.spawn(avatarLoop); notify("Gacha","▶ Spinando... Cat: "..avatarCategory)
+    else
+        if avatarThread then pcall(function() task.cancel(avatarThread) end); avatarThread=nil end
+        avatarRunning=false; notify("Gacha","⏹ Parado | Spins: "..avatarSpins)
+    end
+end,4)
+mkBtn(s2,"Spin Manual (1x)",function()
+    if not destroyerEquipped() then notify("Gacha","❌ Destroyer/Rimuru não equipado!"); return end
+    doSpin(); notify("Gacha","Spin #"..avatarSpins)
+end,5)
+mkSection(s2,"ITENS QUE PARAM O SPIN",6)
+mkBtn(s2,"✅ Marcar Todos",function()
+    for _,v in ipairs(AVATAR_ITEMS) do
+        stopOnItem[v]=true; cfgSet("stop_"..v,true)
+        local r=toggleRefs["stop_"..v]
+        if r and not r.state then r.state=true
+            TweenService:Create(r.track,TweenInfo.new(0.1),{BackgroundColor3=C.on}):Play()
+            TweenService:Create(r.knob, TweenInfo.new(0.1),{Position=UDim2.new(1,-18,0.5,-8)}):Play()
+        end
+    end; notify("Filtro","Todos marcados!")
+end,7)
+mkBtn(s2,"❌ Desmarcar Todos",function()
+    for _,v in ipairs(AVATAR_ITEMS) do
+        stopOnItem[v]=false; cfgSet("stop_"..v,false)
+        local r=toggleRefs["stop_"..v]
+        if r and r.state then r.state=false
+            TweenService:Create(r.track,TweenInfo.new(0.1),{BackgroundColor3=C.off}):Play()
+            TweenService:Create(r.knob, TweenInfo.new(0.1),{Position=UDim2.new(0,2,0.5,-8)}):Play()
+        end
+    end; notify("Filtro","Todos desmarcados!")
+end,8)
+for i,item in ipairs(AVATAR_ITEMS) do
+    mkToggle(s2,item,"stop_"..item,true,function(v) stopOnItem[item]=v end,9+i)
+end
+
+-- ABA 3: AUTO TP
+local t3=makeTab("⚡","Auto TP"); local s3=t3.scroll
+mkSection(s3,"CONTROLE",1)
+mkToggle(s3,"Auto TP  (tecla P também)","tpEnabled",false,function(v)
+    tpEnabled=v; notify("Auto TP",v and "✅ Ativado" or "⏹ Desativado")
+end,2)
+do
+    local info2=Instance.new("TextLabel")
+    info2.Size=UDim2.new(1,0,0,24); info2.BackgroundColor3=Color3.fromRGB(20,20,35)
+    info2.BorderSizePixel=0; info2.Font=Enum.Font.Gotham
+    info2.Text="⚡ Heartbeat puro — sem delay, máxima velocidade"
+    info2.TextColor3=Color3.fromRGB(140,180,255); info2.TextSize=11
+    info2.TextWrapped=true; info2.LayoutOrder=3; info2.ZIndex=5; info2.Parent=s3; corner(info2,6)
+end
+mkSlider(s3,"Dist. mínima","tpMinDist",5,60,1,14,function(v) TP_MIN_DIST=v end,4)
+mkSlider(s3,"Offset (studs)","tpOffset",1,12,1,4,function(v) TP_OFFSET=v end,5)
+
+-- ABA 4: MISC
+local t4=makeTab("⚙","Misc"); local s4=t4.scroll
+mkSection(s4,"PROTEÇÃO",1)
+mkToggle(s4,"Anti AFK","antiAFK",false,function(v)
+    if v then
+        antiAFKConn=Players.LocalPlayer.Idled:Connect(function()
+            local VU=game:GetService("VirtualUser")
+            VU:CaptureController(); VU:ClickButton2(Vector2.new())
+        end); notify("Anti AFK","✅ Ativado")
+    else
+        if antiAFKConn then antiAFKConn:Disconnect(); antiAFKConn=nil end
+        notify("Anti AFK","⏹ Desativado")
+    end
+end,2)
+
+mkSection(s4,"UTILITÁRIOS",3)
+mkBtn(s4,"FPS Boost",function() fpsBoost(); notify("FPS","✅ Partículas removidas!") end,4)
+mkBtn(s4,"Rejoin",function()
+    saveConfig()
+    notify("Rejoin","💾 Configs salvas! Reconectando...")
+    task.delay(0.5, function() TeleportService:Teleport(game.PlaceId,Player) end)
+end,5)
+
+mkSection(s4,"AUTO EXECUTE",6)
+mkBtn(s4,"📥 Instalar no AutoExec",function()
+    if not writefile then
+        notify("AutoExec","❌ writefile não disponível neste executor"); return
+    end
+    local ok = instalarAutoexec()
+    notify("AutoExec", ok and "✅ Instalado! Fecha e reabre o executor." or "❌ Falhou ao gravar")
+end,7)
+
+mkToggle(s4,"Persistência de Teleporte","persistTP",false,function(v)
+    if v then
+        if queue_on_teleport then
+            pcall(queue_on_teleport, AUTOEXEC_CMD)
+            notify("Persistência","✅ Ativa!")
+        else
+            notify("Persistência","❌ Executor não suporta queue_on_teleport")
+        end
+    end
+end,8)
+
+do
+    local statusLbl=Instance.new("TextLabel")
+    statusLbl.Size=UDim2.new(1,0,0,52); statusLbl.BackgroundColor3=Color3.fromRGB(14,20,14)
+    statusLbl.BorderSizePixel=0; statusLbl.Font=Enum.Font.Gotham
+    statusLbl.TextSize=11; statusLbl.TextWrapped=true
+    statusLbl.LayoutOrder=9; statusLbl.ZIndex=5; statusLbl.Parent=s4; corner(statusLbl,6)
+    task.delay(2,function()
+        local lines={}
+        table.insert(lines, writefile~=nil          and "💾 writefile: ✅"        or "💾 writefile: ❌")
+        table.insert(lines, (isfile and (isfile("autoexec/FourHub_AutoExec.lua") or isfile("FourHub_AutoExec.lua")))
+                                                    and "📁 AutoExec: ✅ gravado"  or "📁 AutoExec: clique Instalar")
+        table.insert(lines, (isfile and isfile(SAVE_FILE))
+                                                    and "⚙  Config: ✅ salva"     or "⚙  Config: ainda não")
+        table.insert(lines, queue_on_teleport~=nil  and "🔁 queue_on_tp: ✅"      or "🔁 queue_on_tp: ❌")
+        statusLbl.Text=table.concat(lines,"\n")
+        statusLbl.TextColor3=(writefile~=nil) and Color3.fromRGB(100,220,100) or Color3.fromRGB(220,160,50)
+    end)
+end
+
+-- Botão flutuante
+local FloatBtn=Instance.new("TextButton",GUI)
+FloatBtn.Size=UDim2.new(0,42,0,42); FloatBtn.Position=UDim2.new(0,6,0.5,-21)
+FloatBtn.BackgroundColor3=C.header; FloatBtn.BorderSizePixel=0
+FloatBtn.Text="4H"; FloatBtn.Font=Enum.Font.GothamBold
+FloatBtn.TextSize=14; FloatBtn.TextColor3=C.accent
+FloatBtn.AutoButtonColor=false; FloatBtn.ZIndex=300; corner(FloatBtn,8)
+do local s=Instance.new("UIStroke",FloatBtn); s.Color=C.accent2; s.Thickness=1.5 end
+do
+    local dr=false; local ds,sp
+    FloatBtn.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+            dr=true; ds=i.Position; sp=FloatBtn.Position end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if not dr then return end
+        if i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch then
+            local d=i.Position-ds
+            FloatBtn.Position=UDim2.new(sp.X.Scale,sp.X.Offset+d.X,sp.Y.Scale,sp.Y.Offset+d.Y) end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dr=false end
+    end)
+end
+local hubVis=true
+local function toggleHub()
+    hubVis=not hubVis; Win.Visible=hubVis
+    FloatBtn.TextColor3=hubVis and C.accent or C.off
+end
+FloatBtn.MouseButton1Click:Connect(toggleHub); FloatBtn.TouchTap:Connect(toggleHub)
+
+local minimized=false
+local fullSz=UDim2.new(0,HW,0,HH); local miniSz=UDim2.new(0,HW,0,HEAD_H)
+MinBtn.MouseButton1Click:Connect(function()
+    minimized=not minimized
+    TweenService:Create(Win,TweenInfo.new(0.18,Enum.EasingStyle.Quad),{Size=minimized and miniSz or fullSz}):Play()
+    MinBtn.Text=minimized and "□" or "−"
+end)
+CloseBtn.MouseButton1Click:Connect(function() GUI:Destroy() end)
+
+UserInputService.InputBegan:Connect(function(inp,gpe)
+    if gpe then return end
+    if inp.KeyCode==Enum.KeyCode.P then
+        tpEnabled=not tpEnabled; cfgSet("tpEnabled",tpEnabled)
+        local r=toggleRefs["tpEnabled"]
+        if r then
+            r.state=tpEnabled
+            TweenService:Create(r.track,TweenInfo.new(0.15),{BackgroundColor3=tpEnabled and C.on or C.off}):Play()
+            TweenService:Create(r.knob, TweenInfo.new(0.15),{Position=tpEnabled and UDim2.new(1,-18,0.5,-8) or UDim2.new(0,2,0.5,-8)}):Play()
+        end
+        notify("Auto TP",tpEnabled and "✅ ATIVADO" or "⏹ DESATIVADO")
+    end
+    if inp.KeyCode==Enum.KeyCode.RightShift then toggleHub() end
+end)
+
+t1.activate()
+
+-- ============================================================
+--  RESTAURA CONFIGS APÓS UI PRONTA
+--  Dispara o callback de cada toggle salvo como true
+--  (visual já está correto, só falta ativar o sistema)
+-- ============================================================
+task.spawn(function()
+    task.wait(0.5)
+
+    -- Toggles: dispara cb se estava ativado
+    for id, ref in pairs(toggleRefs) do
+        if ref.state == true and ref.cb then
+            pcall(ref.cb, true)
+        end
+    end
+
+    -- Reaplica variáveis de sistema (sliders já aplicam via applyFn)
+    tpEnabled      = cfgGet("tpEnabled",   false)
+    TP_MIN_DIST    = cfgGet("tpMinDist",   14)
+    TP_OFFSET      = cfgGet("tpOffset",    4)
+    rdMode         = cfgGet("rdMode",      "Ambos")
+    avatarCategory = cfgGet("avatarCat",   "Classic")
+    for _, item in ipairs(AVATAR_ITEMS) do
+        stopOnItem[item] = cfgGet("stop_"..item, true)
+    end
+
+    print("[4H] ✅ Configs restauradas com sucesso!")
+end)
+
+notify("FOUR HUB v4.8","✅ Configs carregadas! [P]=TP [RShift]=Hub",5)
+print("[FourHub v4.8] ✅ Save/Load correto | AutoExec instalado | Nova URL")
