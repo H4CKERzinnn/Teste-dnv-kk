@@ -1,0 +1,332 @@
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local StarterGui       = game:GetService("StarterGui")
+local TweenService     = game:GetService("TweenService")
+
+local player    = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local rootPart  = character:WaitForChild("HumanoidRootPart")
+
+local ENEMIES_FOLDER = workspace:WaitForChild("Client"):WaitForChild("Enemies")
+
+local cfg = {
+    autoTPEnabled  = true,
+    tpInterval     = 0.6,
+    tpRange        = 600,
+    tpOffset       = 4,
+    waveTarget     = 45,
+    waveTPEnabled  = true,
+}
+
+local currentIndex = 1
+local lastTP       = 0
+local jaTeleportou = false
+local hubOpen      = true
+
+-- Wave Label
+local waveLabel = nil
+task.spawn(function()
+    local ok, result = pcall(function()
+        return player.PlayerGui
+            :WaitForChild("UI",10):WaitForChild("HUD",10)
+            :WaitForChild("Gamemodes",10):WaitForChild("Trial Easy",10)
+            :WaitForChild("Main",10):WaitForChild("Wave",10):WaitForChild("Value",10)
+    end)
+    if ok then waveLabel = result end
+end)
+
+local function getCurrentWave()
+    if not waveLabel then return 0 end
+    local t = waveLabel.Text or ""
+    return tonumber(t:match("(%d+)%s*/") or t:match("(%d+)/")) or 0
+end
+
+local function tentarTeleport()
+    local args = {{{ "Player","Teleport","Teleport","Dragon Verse",1,n=5},"\002"}}
+    for i=1,5 do
+        pcall(function()
+            game:GetService("ReplicatedStorage")
+                :WaitForChild("BridgeNet",2):WaitForChild("dataRemoteEvent",2)
+                :FireServer(unpack(args))
+        end)
+        task.wait(0.35)
+    end
+end
+
+local function getLocalEnemies()
+    local list,origin = {},rootPart.Position
+    for _,m in ipairs(ENEMIES_FOLDER:GetChildren()) do
+        if not m:IsA("Model") then continue end
+        local tp = m:FindFirstChild("HumanoidRootPart") or m:FindFirstChild("Torso")
+               or m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart")
+        if not tp or tp.Position.Y < -200 then continue end
+        if (tp.Position-origin).Magnitude > cfg.tpRange then continue end
+        table.insert(list,tp)
+    end
+    return list
+end
+
+RunService.Heartbeat:Connect(function()
+    if not cfg.autoTPEnabled then return end
+    if tick()-lastTP < cfg.tpInterval then return end
+    lastTP = tick()
+    local e = getLocalEnemies()
+    if #e==0 then return end
+    if currentIndex>#e then currentIndex=1 end
+    local tp=e[currentIndex]
+    if tp then
+        local dir=(rootPart.Position-tp.Position).Unit
+        rootPart.CFrame=CFrame.new(tp.Position+dir*cfg.tpOffset,tp.Position)
+    end
+    currentIndex=(currentIndex%#e)+1
+end)
+
+player.CharacterAdded:Connect(function(c)
+    character=c; rootPart=c:WaitForChild("HumanoidRootPart")
+    lastTP=tick(); currentIndex=1
+end)
+
+local sg = Instance.new("ScreenGui")
+sg.Name="ScriptHub"; sg.ResetOnSpawn=false
+sg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+sg.DisplayOrder=999   -- ACIMA DE TUDO
+sg.Parent=player:WaitForChild("PlayerGui")
+
+local C={
+    bg=Color3.fromRGB(10,10,18),panel=Color3.fromRGB(20,20,32),
+    card=Color3.fromRGB(26,26,40),accent=Color3.fromRGB(80,130,255),
+    pink=Color3.fromRGB(255,90,155),green=Color3.fromRGB(70,215,130),
+    red=Color3.fromRGB(255,70,80),text=Color3.fromRGB(220,220,240),
+    sub=Color3.fromRGB(130,130,160),
+}
+local function cr(p,r) local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,r or 10);c.Parent=p end
+local function sk(p,col,th,tr) local s=Instance.new("UIStroke");s.Color=col or C.accent;s.Thickness=th or 1.5;s.Transparency=tr or 0.5;s.Parent=p end
+local function tw(o,props,t) TweenService:Create(o,TweenInfo.new(t or 0.22,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),props):Play() end
+
+local WIN_W,WIN_H=300,430
+
+-- Janela principal — topo DIREITO
+local mf=Instance.new("Frame")
+mf.Size=UDim2.new(0,WIN_W,0,WIN_H)
+mf.Position=UDim2.new(1,-(WIN_W+10),0,10)
+mf.BackgroundColor3=C.bg; mf.BorderSizePixel=0
+mf.ClipsDescendants=true; mf.ZIndex=100; mf.Active=true
+mf.Parent=sg; cr(mf,14); sk(mf,C.accent,1.5,0.35)
+
+-- DRAG pelo header
+do
+    local drag,dInput,sPos,sFrame=false,nil,nil,nil
+    mf.InputBegan:Connect(function(i)
+        if i.UserInputType~=Enum.UserInputType.MouseButton1
+        and i.UserInputType~=Enum.UserInputType.Touch then return end
+        local relY=i.Position.Y-mf.AbsolutePosition.Y
+        if relY>44 then return end   -- só header
+        drag=true; dInput=i; sPos=i.Position; sFrame=mf.Position
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if not drag then return end
+        if i.UserInputType~=Enum.UserInputType.MouseMovement
+        and i.UserInputType~=Enum.UserInputType.Touch then return end
+        local d=i.Position-sPos
+        local vp=sg.AbsoluteSize
+        local nx=math.clamp(sFrame.X.Offset+d.X,0,vp.X-WIN_W)
+        local ny=math.clamp(sFrame.Y.Offset+d.Y,0,vp.Y-60)
+        mf.Position=UDim2.new(0,nx,0,ny)
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1
+        or i.UserInputType==Enum.UserInputType.Touch then drag=false end
+    end)
+end
+
+-- Header
+local hdr=Instance.new("Frame")
+hdr.Size=UDim2.new(1,0,0,44); hdr.BackgroundColor3=C.panel
+hdr.BorderSizePixel=0; hdr.ZIndex=101; hdr.Parent=mf; cr(hdr,12)
+
+local function lbl(p,txt,sz,col,x,y,w,h,zoff,xa)
+    local l=Instance.new("TextLabel")
+    l.Size=UDim2.new(w or 1,0,0,h or 18)
+    l.Position=UDim2.new(0,x or 10,0,y or 4)
+    l.BackgroundTransparency=1; l.Text=txt
+    l.TextColor3=col or C.text; l.Font=Enum.Font.GothamBold
+    l.TextSize=sz or 13; l.ZIndex=(p.ZIndex or 100)+(zoff or 1)
+    l.TextXAlignment=xa or Enum.TextXAlignment.Left
+    l.Parent=p; return l
+end
+
+lbl(hdr,"✦  SCRIPT HUB",15,C.accent,12,6,0.65,20)
+lbl(hdr,"↕ segure o topo p/ mover",10,C.sub,12,26,0.8,14)
+
+local closeBtn=Instance.new("TextButton")
+closeBtn.Size=UDim2.new(0,30,0,30); closeBtn.Position=UDim2.new(1,-36,0.5,-15)
+closeBtn.BackgroundColor3=Color3.fromRGB(50,25,35); closeBtn.Text="✕"
+closeBtn.TextColor3=C.red; closeBtn.Font=Enum.Font.GothamBold
+closeBtn.TextSize=13; closeBtn.ZIndex=103; closeBtn.Parent=hdr; cr(closeBtn,8)
+
+-- Scroll
+local scr=Instance.new("ScrollingFrame")
+scr.Size=UDim2.new(1,-6,1,-50); scr.Position=UDim2.new(0,3,0,47)
+scr.BackgroundTransparency=1; scr.BorderSizePixel=0
+scr.ScrollBarThickness=3; scr.ScrollBarImageColor3=C.accent
+scr.CanvasSize=UDim2.new(0,0,0,0); scr.AutomaticCanvasSize=Enum.AutomaticSize.Y
+scr.ZIndex=101; scr.Parent=mf
+
+local ul=Instance.new("UIListLayout"); ul.Padding=UDim.new(0,7)
+ul.SortOrder=Enum.SortOrder.LayoutOrder; ul.Parent=scr
+local up=Instance.new("UIPadding"); up.PaddingLeft=UDim.new(0,6)
+up.PaddingRight=UDim.new(0,6); up.PaddingTop=UDim.new(0,5); up.Parent=scr
+
+local function card(h)
+    local f=Instance.new("Frame"); f.Size=UDim2.new(1,0,0,h or 58)
+    f.BackgroundColor3=C.card; f.BorderSizePixel=0; f.ZIndex=102; f.Parent=scr
+    cr(f,9); sk(f,C.accent,1,0.75); return f
+end
+
+local function sec(t)
+    local f=Instance.new("Frame"); f.Size=UDim2.new(1,0,0,20)
+    f.BackgroundTransparency=1; f.ZIndex=102; f.Parent=scr
+    lbl(f,t,11,C.sub,0,1,1,18,1)
+end
+
+local function toggle(par,init,cb)
+    local tr=Instance.new("Frame"); tr.Size=UDim2.new(0,42,0,22)
+    tr.Position=UDim2.new(1,-48,0.5,-11)
+    tr.BackgroundColor3=init and C.green or Color3.fromRGB(55,55,75)
+    tr.BorderSizePixel=0; tr.ZIndex=par.ZIndex+1; tr.Parent=par; cr(tr,11)
+    local kn=Instance.new("Frame"); kn.Size=UDim2.new(0,16,0,16)
+    kn.Position=init and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8)
+    kn.BackgroundColor3=Color3.fromRGB(255,255,255); kn.BorderSizePixel=0
+    kn.ZIndex=tr.ZIndex+1; kn.Parent=tr; cr(kn,8)
+    local btn=Instance.new("TextButton"); btn.Size=UDim2.new(1,0,1,0)
+    btn.BackgroundTransparency=1; btn.Text=""; btn.ZIndex=kn.ZIndex+1; btn.Parent=tr
+    local on=init
+    btn.MouseButton1Click:Connect(function()
+        on=not on
+        tw(tr,{BackgroundColor3=on and C.green or Color3.fromRGB(55,55,75)})
+        tw(kn,{Position=on and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8)})
+        cb(on)
+    end)
+end
+
+local function slider(par,mn,mx,cur,step,cb)
+    local tr=Instance.new("Frame"); tr.Size=UDim2.new(1,-16,0,5)
+    tr.Position=UDim2.new(0,8,1,-14); tr.BackgroundColor3=Color3.fromRGB(38,38,58)
+    tr.BorderSizePixel=0; tr.ZIndex=par.ZIndex+1; tr.Parent=par; cr(tr,3)
+    local fl=Instance.new("Frame"); fl.Size=UDim2.new((cur-mn)/(mx-mn),0,1,0)
+    fl.BackgroundColor3=C.accent; fl.BorderSizePixel=0; fl.ZIndex=tr.ZIndex+1; fl.Parent=tr; cr(fl,3)
+    local hd=Instance.new("TextButton"); hd.Size=UDim2.new(0,18,0,18)
+    hd.AnchorPoint=Vector2.new(0.5,0.5)
+    hd.Position=UDim2.new((cur-mn)/(mx-mn),0,0.5,0)
+    hd.BackgroundColor3=Color3.fromRGB(255,255,255); hd.Text=""
+    hd.ZIndex=tr.ZIndex+2; hd.Parent=tr; cr(hd,9)
+    local v=cur; local dr=false
+    local function upd(x)
+        local rel=math.clamp((x-tr.AbsolutePosition.X)/tr.AbsoluteSize.X,0,1)
+        v=math.clamp(math.floor((mn+(mx-mn)*rel)/step+0.5)*step,mn,mx)
+        local p=(v-mn)/(mx-mn)
+        fl.Size=UDim2.new(p,0,1,0); hd.Position=UDim2.new(p,0,0.5,0); cb(v)
+    end
+    hd.MouseButton1Down:Connect(function() dr=true end)
+    tr.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.Touch then dr=true; upd(i.Position.X) end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1
+        or i.UserInputType==Enum.UserInputType.Touch then dr=false end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if not dr then return end
+        if i.UserInputType==Enum.UserInputType.MouseMovement
+        or i.UserInputType==Enum.UserInputType.Touch then upd(i.Position.X) end
+    end)
+end
+
+sec("  ⚔  AUTO TP — INIMIGOS")
+
+local c1=card(52); lbl(c1,"Auto Teleporte",13,C.text,10,16,0.6,20)
+toggle(c1,cfg.autoTPEnabled,function(v) cfg.autoTPEnabled=v end)
+
+local c2=card(66); local lR=lbl(c2,"📡 Range: "..cfg.tpRange.." studs",12,C.sub,10,5,0.8,18)
+slider(c2,50,1000,cfg.tpRange,50,function(v) cfg.tpRange=v; lR.Text="📡 Range: "..v.." studs" end)
+
+local c3=card(66); local lI=lbl(c3,"⏱ Intervalo: "..cfg.tpInterval.."s",12,C.sub,10,5,0.8,18)
+slider(c3,1,30,cfg.tpInterval*10,1,function(v)
+    cfg.tpInterval=v/10; lI.Text="⏱ Intervalo: "..(v/10).."s"
+end)
+
+sec("  🌊  WAVE TELEPORT")
+
+local c4=card(52); lbl(c4,"Wave Auto TP",13,C.text,10,16,0.6,20)
+toggle(c4,cfg.waveTPEnabled,function(v) cfg.waveTPEnabled=v; jaTeleportou=false end)
+
+local c5=card(66); local lW=lbl(c5,"🎯 Wave alvo: "..cfg.waveTarget,12,C.sub,10,5,0.8,18)
+slider(c5,1,50,cfg.waveTarget,1,function(v)
+    cfg.waveTarget=v; lW.Text="🎯 Wave alvo: "..v; jaTeleportou=false
+end)
+
+local c6=card(42)
+local tpNow=Instance.new("TextButton"); tpNow.Size=UDim2.new(1,-14,1,-10)
+tpNow.Position=UDim2.new(0,7,0,5); tpNow.BackgroundColor3=C.pink
+tpNow.Text="🚀  TELEPORTAR AGORA"; tpNow.TextColor3=Color3.fromRGB(255,255,255)
+tpNow.Font=Enum.Font.GothamBold; tpNow.TextSize=13; tpNow.ZIndex=103; tpNow.Parent=c6; cr(tpNow,8)
+tpNow.MouseButton1Click:Connect(function() task.spawn(tentarTeleport) end)
+
+sec("  📊  STATUS")
+local cSt=card(50)
+local stL=Instance.new("TextLabel"); stL.Size=UDim2.new(1,-10,1,0)
+stL.Position=UDim2.new(0,10,0,0); stL.BackgroundTransparency=1
+stL.Text="Carregando..."; stL.TextColor3=C.sub; stL.Font=Enum.Font.Gotham
+stL.TextSize=11; stL.TextXAlignment=Enum.TextXAlignment.Left
+stL.TextWrapped=true; stL.ZIndex=103; stL.Parent=cSt
+
+task.spawn(function()
+    while task.wait(1) do
+        local e=getLocalEnemies()
+        stL.Text=string.format("Wave: %d | Inimigos: %d\nAuto TP: %s | Wave TP: %s",
+            getCurrentWave(),#e,
+            cfg.autoTPEnabled and "ON ✅" or "OFF ❌",
+            cfg.waveTPEnabled and "ON ✅" or "OFF ❌")
+    end
+end)
+
+-- Detector wave
+task.spawn(function()
+    while task.wait(0.5) do
+        if not waveLabel or not cfg.waveTPEnabled or jaTeleportou then continue end
+        if getCurrentWave()>=cfg.waveTarget then
+            jaTeleportou=true; task.spawn(tentarTeleport)
+        end
+    end
+end)
+
+local fb=Instance.new("TextButton")
+fb.Size=UDim2.new(0,52,0,28); fb.Position=UDim2.new(1,-62,0,10)
+fb.BackgroundColor3=C.accent; fb.Text="HUB ▼"; fb.TextColor3=Color3.fromRGB(255,255,255)
+fb.Font=Enum.Font.GothamBold; fb.TextSize=12; fb.ZIndex=200; fb.Visible=false; fb.Parent=sg
+cr(fb,8); sk(fb,C.accent,2,0.3)
+
+local function setOpen(open)
+    hubOpen=open
+    if open then
+        mf.Visible=true; tw(mf,{Size=UDim2.new(0,WIN_W,0,WIN_H)},0.28)
+        fb.Visible=false
+    else
+        tw(mf,{Size=UDim2.new(0,WIN_W,0,0)},0.22)
+        task.delay(0.23,function() mf.Visible=false end)
+        fb.Visible=true
+    end
+end
+
+mf.Size=UDim2.new(0,WIN_W,0,0); mf.Visible=false
+task.delay(0.15,function() setOpen(true) end)
+
+closeBtn.MouseButton1Click:Connect(function() setOpen(false) end)
+fb.MouseButton1Click:Connect(function() setOpen(true) end)
+UserInputService.InputBegan:Connect(function(i,gp)
+    if gp then return end
+    if i.KeyCode==Enum.KeyCode.P then setOpen(not hubOpen) end
+end)
+
+print("[HUB] ✅ Carregado! Arraste pelo topo | Botão HUB ▼ | Tecla P")
