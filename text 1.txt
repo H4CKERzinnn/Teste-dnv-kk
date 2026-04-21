@@ -97,3 +97,72 @@ task.spawn(function()
         handleAchievements()
     end
 end)
+
+local player = game:GetService("Players").LocalPlayer
+
+local waveLabel = player.PlayerGui
+    :WaitForChild("UI", 5)
+    :WaitForChild("HUD", 5)
+    :WaitForChild("Gamemodes", 5)
+    :WaitForChild("Trial Easy", 5)
+    :WaitForChild("Main", 5)
+    :WaitForChild("Wave", 5)
+    :WaitForChild("Value", 5)
+
+local jaTeleportou = false
+
+local function getCurrentWave()
+    local text = waveLabel.Text or ""
+    local num = text:match("(%d+)%s*/") or text:match("(%d+)/")
+    return tonumber(num) or 0
+end
+
+local function tentarTeleport()
+    print("🔄 Tentando teleportar...")
+
+    local args = {
+        {
+            {
+                "Player",
+                "Teleport",
+                "Teleport",
+                "Dragon Verse",
+                2,
+                n = 5
+            },
+            "\002"
+        }
+    }
+
+    for i = 1, 5 do
+        pcall(function()
+            game:GetService("ReplicatedStorage")
+                :WaitForChild("BridgeNet", 2)
+                :WaitForChild("dataRemoteEvent", 2)
+                :FireServer(unpack(args))
+        end)
+
+        wait(0.35)
+    end
+
+    print("🏁 Teleport finalizado.")
+end
+
+waveLabel:GetPropertyChangedSignal("Text"):Connect(function()
+    local current = getCurrentWave()
+
+    -- 🔁 RESETA quando começa outra trial
+    if current <= 5 then
+        jaTeleportou = false
+    end
+
+    -- 🎯 TELEPORTA na wave 45
+    if not jaTeleportou and current >= 45 then
+        jaTeleportou = true
+        print("🎯 Wave " .. current .. " atingida!")
+
+        tentarTeleport()
+    end
+end)
+
+print("✅ Script automático infinito carregado! (Wave 45)")
