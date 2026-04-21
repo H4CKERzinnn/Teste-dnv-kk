@@ -117,8 +117,8 @@ local function getCurrentWave()
     return tonumber(num) or 0
 end
 
-local function tentarTeleport()
-    print("🔄 Tentando teleportar...")
+local function teleportSlimeVerse()
+    print("🌍 Indo para Slime Verse...")
 
     local args = {
         {
@@ -126,8 +126,8 @@ local function tentarTeleport()
                 "Player",
                 "Teleport",
                 "Teleport",
-                "Dragon Verse",
-                2,
+                "Slime Verse",
+                1,
                 n = 5
             },
             "\002"
@@ -141,28 +141,39 @@ local function tentarTeleport()
                 :WaitForChild("dataRemoteEvent", 2)
                 :FireServer(unpack(args))
         end)
-
-        wait(0.35)
+        task.wait(0.3)
     end
+end
 
-    print("🏁 Teleport finalizado.")
+local function teleportCoordenada()
+    print("📍 Indo para coordenada...")
+
+    local char = player.Character or player.CharacterAdded:Wait()
+    local hrp = char:WaitForChild("HumanoidRootPart")
+
+    hrp.CFrame = CFrame.new(624, 807, -827)
 end
 
 waveLabel:GetPropertyChangedSignal("Text"):Connect(function()
     local current = getCurrentWave()
 
-    -- 🔁 RESETA quando começa outra trial
+    -- 🔁 reset quando reinicia
     if current <= 5 then
         jaTeleportou = false
     end
 
-    -- 🎯 TELEPORTA na wave 45
-    if not jaTeleportou and current >= 45 then
+    -- 🎯 sair na wave 40
+    if not jaTeleportou and current >= 40 then
         jaTeleportou = true
         print("🎯 Wave " .. current .. " atingida!")
 
-        tentarTeleport()
+        teleportSlimeVerse()
+
+        -- ⏳ espera carregar o mapa
+        task.wait(2)
+
+        teleportCoordenada()
     end
 end)
 
-print("✅ Script automático infinito carregado! (Wave 45)")
+print("✅ Auto TP (Wave 40 → Slime + Coordenada) ativo!")
