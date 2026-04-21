@@ -177,3 +177,38 @@ waveLabel:GetPropertyChangedSignal("Text"):Connect(function()
 end)
 
 print("✅ Auto TP (Wave 40 → Slime + Coordenada) ativo!")
+
+local remote = game:GetService("ReplicatedStorage")
+	:WaitForChild("BridgeNet")
+	:WaitForChild("dataRemoteEvent")
+
+local rolls = {
+	"Swords Banner",
+	"Haki",
+	"Fruit",
+	"Dragon Power",
+	"Race",
+	"Slime Power",
+	"Primordial Demon"
+}
+
+while true do
+	for _, rollName in ipairs(rolls) do
+		local args = {
+			{
+				{
+					"General",
+					rollName == "Swords Banner" and "Banner" or "Gacha",
+					"Roll",
+					rollName,
+					rollName == "Swords Banner" and nil or {},
+					n = rollName == "Swords Banner" and 4 or 5
+				},
+				"\002"
+			}
+		}
+
+		remote:FireServer(unpack(args))
+		task.wait(0.004) -- tempo entre cada roll
+	end
+end
