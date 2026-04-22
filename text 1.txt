@@ -133,7 +133,6 @@ while true do
 	end
 end
 
-
 local player = game:GetService("Players").LocalPlayer
 
 local waveLabel = player.PlayerGui
