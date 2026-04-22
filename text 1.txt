@@ -98,86 +98,6 @@ task.spawn(function()
     end
 end)
 
-local player = game:GetService("Players").LocalPlayer
-
-local waveLabel = player.PlayerGui
-    :WaitForChild("UI", 5)
-    :WaitForChild("HUD", 5)
-    :WaitForChild("Gamemodes", 5)
-    :WaitForChild("Trial Easy", 5)
-    :WaitForChild("Main", 5)
-    :WaitForChild("Wave", 5)
-    :WaitForChild("Value", 5)
-
-local jaTeleportou = false
-
-local function getCurrentWave()
-    local text = waveLabel.Text or ""
-    local num = text:match("(%d+)%s*/") or text:match("(%d+)/")
-    return tonumber(num) or 0
-end
-
-local function teleportSlimeVerse()
-    print("🌍 Indo para Slime Verse...")
-
-    local args = {
-        {
-            {
-                "Player",
-                "Teleport",
-                "Teleport",
-                "Slime Verse",
-                1,
-                n = 5
-            },
-            "\002"
-        }
-    }
-
-    for i = 1, 5 do
-        pcall(function()
-            game:GetService("ReplicatedStorage")
-                :WaitForChild("BridgeNet", 2)
-                :WaitForChild("dataRemoteEvent", 2)
-                :FireServer(unpack(args))
-        end)
-        task.wait(0.3)
-    end
-end
-
-local function teleportCoordenada()
-    print("📍 Indo para coordenada...")
-
-    local char = player.Character or player.CharacterAdded:Wait()
-    local hrp = char:WaitForChild("HumanoidRootPart")
-
-    hrp.CFrame = CFrame.new(624, 807, -827)
-end
-
-waveLabel:GetPropertyChangedSignal("Text"):Connect(function()
-    local current = getCurrentWave()
-
-    -- 🔁 reset quando reinicia
-    if current <= 5 then
-        jaTeleportou = false
-    end
-
-    -- 🎯 sair na wave 40
-    if not jaTeleportou and current >= 40 then
-        jaTeleportou = true
-        print("🎯 Wave " .. current .. " atingida!")
-
-        teleportSlimeVerse()
-
-        -- ⏳ espera carregar o mapa
-        task.wait(2)
-
-        teleportCoordenada()
-    end
-end)
-
-print("✅ Auto TP (Wave 40 → Slime + Coordenada) ativo!")
-
 local remote = game:GetService("ReplicatedStorage")
 	:WaitForChild("BridgeNet")
 	:WaitForChild("dataRemoteEvent")
@@ -212,3 +132,170 @@ while true do
 		task.wait(0.004) -- tempo entre cada roll
 	end
 end
+
+
+local Players    = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player    = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local rootPart  = character:WaitForChild("HumanoidRootPart")
+
+local ENEMIES_FOLDER = workspace:WaitForChild("Client"):WaitForChild("Enemies")
+
+-- 📍 Coordenadas
+local TRIAL_POS = Vector3.new(-4250, 1035, -11407)
+local ILHA_POS  = Vector3.new(624, 807, -827)
+
+-- Config
+local cfg = {
+    autoTPEnabled = false, -- começa desligado
+    tpInterval    = 0.6,
+    tpRange       = 600,
+    tpOffset      = 4,
+    detectRange   = 50 -- distância pra detectar chegada na trial
+}
+
+local currentIndex = 1
+local lastTP = 0
+local jaTeleportou = false
+
+-- 🔍 Checar se está perto de uma posição
+local function isNear(pos, range)
+    return (rootPart.Position - pos).Magnitude <= range
+end
+
+-- 👹 Pegar inimigos
+local function getLocalEnemies()
+    local list = {}
+    local origin = rootPart.Position
+
+    for _, m in ipairs(ENEMIES_FOLDER:GetChildren()) do
+        if not m:IsA("Model") then continue end
+
+        local tp = m:FindFirstChild("HumanoidRootPart")
+            or m:FindFirstChild("Torso")
+            or m.PrimaryPart
+            or m:FindFirstChildWhichIsA("BasePart")
+
+        if not tp then continue end
+        if tp.Position.Y < -200 then continue end
+        if (tp.Position - origin).Magnitude > cfg.tpRange then continue end
+
+        table.insert(list, tp)
+    end
+
+    return list
+end
+
+-- 🤖 AUTO FARM
+RunService.Heartbeat:Connect(function()
+    -- 🟢 ATIVA quando chega na trial
+    if isNear(TRIAL_POS, cfg.detectRange) then
+        cfg.autoTPEnabled = true
+    end
+
+    if not cfg.autoTPEnabled then return end
+    if tick() - lastTP < cfg.tpInterval then return end
+
+    lastTP = tick()
+
+    local enemies = getLocalEnemies()
+    if #enemies == 0 then return end
+
+    if currentIndex > #enemies then
+        currentIndex = 1
+    end
+
+    local target = enemies[currentIndex]
+
+    if target then
+        local dir = (rootPart.Position - target.Position).Unit
+        rootPart.CFrame = CFrame.new(target.Position + dir * cfg.tpOffset, target.Position)
+    end
+
+    currentIndex = (currentIndex % #enemies) + 1
+end)
+
+-- 📊 PEGAR WAVE
+local waveLabel = player.PlayerGui
+    :WaitForChild("UI")
+    :WaitForChild("HUD")
+    :WaitForChild("Gamemodes")
+    :WaitForChild("Trial Easy")
+    :WaitForChild("Main")
+    :WaitForChild("Wave")
+    :WaitForChild("Value")
+
+local function getCurrentWave()
+    local text = waveLabel.Text or ""
+    local num = text:match("(%d+)%s*/") or text:match("(%d+)/")
+    return tonumber(num) or 0
+end
+
+-- 🌍 TP Slime
+local function teleportSlime()
+    local args = {
+        {
+            {
+                "Player",
+                "Teleport",
+                "Teleport",
+                "Slime Verse",
+                1,
+                n = 5
+            },
+            "\002"
+        }
+    }
+
+    for i = 1, 5 do
+        pcall(function()
+            game:GetService("ReplicatedStorage")
+                :WaitForChild("BridgeNet")
+                :WaitForChild("dataRemoteEvent")
+                :FireServer(unpack(args))
+        end)
+        task.wait(0.3)
+    end
+end
+
+-- 🎯 DETECTOR DE WAVE
+waveLabel:GetPropertyChangedSignal("Text"):Connect(function()
+    local current = getCurrentWave()
+
+    -- reset
+    if current <= 5 then
+        jaTeleportou = false
+    end
+
+    -- 🚪 SAÍDA NA WAVE 40
+    if not jaTeleportou and current >= 40 then
+        jaTeleportou = true
+
+        print("🚪 Saindo da trial...")
+
+        -- 🔴 DESATIVA FARM
+        cfg.autoTPEnabled = false
+
+        teleportSlime()
+
+        task.wait(2)
+
+        -- 📍 TP PRA ILHA
+        character = player.Character or player.CharacterAdded:Wait()
+        rootPart = character:WaitForChild("HumanoidRootPart")
+
+        rootPart.CFrame = CFrame.new(ILHA_POS)
+    end
+end)
+
+-- 🔄 Respawn
+player.CharacterAdded:Connect(function(c)
+    character = c
+    rootPart = c:WaitForChild("HumanoidRootPart")
+    lastTP = tick()
+    currentIndex = 1
+end)
+
+print("🔥 Sistema FULL AUTO carregado!")
