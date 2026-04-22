@@ -133,28 +133,13 @@ while true do
 	end
 end
 
-local player = game:GetService("Players").LocalPlayer
 
-local waveLabel = player.PlayerGui
-    :WaitForChild("UI", 5)
-    :WaitForChild("HUD", 5)
-    :WaitForChild("Gamemodes", 5)
-    :WaitForChild("Trial Easy", 5)
-    :WaitForChild("Main", 5)
-    :WaitForChild("Wave", 5)
-    :WaitForChild("Value", 5)
+-- ⏰ CONTROLE POR HORÁRIO
 
-local jaTeleportou = false
+local jaAtivouMinuto = ""
+local jaTeleportouMinuto = ""
 
-local function getCurrentWave()
-    local text = waveLabel.Text or ""
-    local num = text:match("(%d+)%s*/") or text:match("(%d+)/")
-    return tonumber(num) or 0
-end
-
-local function teleportSlimeVerse()
-    print("🌍 Indo para Slime Verse...")
-
+local function teleportIlha()
     local args = {
         {
             {
@@ -172,8 +157,8 @@ local function teleportSlimeVerse()
     for i = 1, 5 do
         pcall(function()
             game:GetService("ReplicatedStorage")
-                :WaitForChild("BridgeNet", 2)
-                :WaitForChild("dataRemoteEvent", 2)
+                :WaitForChild("BridgeNet")
+                :WaitForChild("dataRemoteEvent")
                 :FireServer(unpack(args))
         end)
         task.wait(0.3)
@@ -181,34 +166,40 @@ local function teleportSlimeVerse()
 end
 
 local function teleportCoordenada()
-    print("📍 Indo para coordenada...")
-
     local char = player.Character or player.CharacterAdded:Wait()
     local hrp = char:WaitForChild("HumanoidRootPart")
 
     hrp.CFrame = CFrame.new(624, 807, -827)
 end
 
-waveLabel:GetPropertyChangedSignal("Text"):Connect(function()
-    local current = getCurrentWave()
+task.spawn(function()
+    while true do
+        local minuto = os.date("*t").min
 
-    -- 🔁 reset quando reinicia
-    if current <= 5 then
-        jaTeleportou = false
-    end
+        -- 🟢 ATIVA FARM (15 e 45)
+        if (minuto == 15 or minuto == 45) and jaAtivouMinuto ~= tostring(minuto) then
+            jaAtivouMinuto = tostring(minuto)
 
-    -- 🎯 sair na wave 40
-    if not jaTeleportou and current >= 40 then
-        jaTeleportou = true
-        print("🎯 Wave " .. current .. " atingida!")
+            print("🟢 Ativando auto farm (", minuto, ")")
 
-        teleportSlimeVerse()
+            cfg.autoTPEnabled = true
+        end
 
-        -- ⏳ espera carregar o mapa
-        task.wait(2)
+        -- 🔴 DESATIVA + TP (19 e 49)
+        if (minuto == 19 or minuto == 49) and jaTeleportouMinuto ~= tostring(minuto) then
+            jaTeleportouMinuto = tostring(minuto)
 
-        teleportCoordenada()
+            print("🔴 Desligando farm + TP (", minuto, ")")
+
+            cfg.autoTPEnabled = false
+
+            teleportIlha()
+
+            task.wait(2)
+
+            teleportCoordenada()
+        end
+
+        task.wait(5) -- checa a cada 5 segundos
     end
 end)
-
-print("✅ Auto TP (Wave 40 → Slime + Coordenada) ativo!")
