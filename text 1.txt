@@ -134,11 +134,6 @@ while true do
 end
 
 
--- ⏰ CONTROLE POR HORÁRIO
-
-local jaAtivouMinuto = ""
-local jaTeleportouMinuto = ""
-
 local function teleportIlha()
     local args = {
         {
@@ -147,59 +142,27 @@ local function teleportIlha()
                 "Teleport",
                 "Teleport",
                 "Slime Verse",
-                1,
+                2,
                 n = 5
             },
             "\002"
         }
     }
 
-    for i = 1, 5 do
-        pcall(function()
+    for i = 1, 4 do
+        local success, err = pcall(function()
             game:GetService("ReplicatedStorage")
                 :WaitForChild("BridgeNet")
                 :WaitForChild("dataRemoteEvent")
                 :FireServer(unpack(args))
         end)
-        task.wait(0.3)
-    end
-end
 
-local function teleportCoordenada()
-    local char = player.Character or player.CharacterAdded:Wait()
-    local hrp = char:WaitForChild("HumanoidRootPart")
-
-    hrp.CFrame = CFrame.new(624, 807, -827)
-end
-
-task.spawn(function()
-    while true do
-        local minuto = os.date("*t").min
-
-        -- 🟢 ATIVA FARM (15 e 45)
-        if (minuto == 15 or minuto == 45) and jaAtivouMinuto ~= tostring(minuto) then
-            jaAtivouMinuto = tostring(minuto)
-
-            print("🟢 Ativando auto farm (", minuto, ")")
-
-            cfg.autoTPEnabled = true
+        if success then
+            print("✅ TP Slime Verse ok (" .. i .. "/4)")
+        else
+            warn("❌ TP falhou (" .. i .. "/4):", err)
         end
 
-        -- 🔴 DESATIVA + TP (19 e 49)
-        if (minuto == 19 or minuto == 49) and jaTeleportouMinuto ~= tostring(minuto) then
-            jaTeleportouMinuto = tostring(minuto)
-
-            print("🔴 Desligando farm + TP (", minuto, ")")
-
-            cfg.autoTPEnabled = false
-
-            teleportIlha()
-
-            task.wait(2)
-
-            teleportCoordenada()
-        end
-
-        task.wait(5) -- checa a cada 5 segundos
+        task.wait(0.4)
     end
-end)
+end
