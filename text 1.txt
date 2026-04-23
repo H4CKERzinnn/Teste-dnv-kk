@@ -133,7 +133,26 @@ while true do
 end
 
 
-local function teleportIlha()
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+player.CharacterAdded:Connect(function(c)
+    character = c
+    rootPart = c:WaitForChild("HumanoidRootPart")
+end)
+
+-- 📍 ponto de ativação
+local TRIGGER_POS = Vector3.new(27385, 787, -15848)
+
+local ativado = false
+
+-- 🔥 TP Slime Verse
+local function teleportSlime()
     local args = {
         {
             {
@@ -149,22 +168,33 @@ local function teleportIlha()
     }
 
     for i = 1, 4 do
-        local success, err = pcall(function()
-            game:GetService("ReplicatedStorage")
-                :WaitForChild("BridgeNet")
+        pcall(function()
+            ReplicatedStorage:WaitForChild("BridgeNet")
                 :WaitForChild("dataRemoteEvent")
                 :FireServer(unpack(args))
         end)
 
-        if success then
-            print("✅ TP Slime Verse ok (" .. i .. "/4)")
-        else
-            warn("❌ TP falhou (" .. i .. "/4):", err)
-        end
-
         task.wait(0.4)
     end
 end
+
+-- 🧠 detector de posição
+RunService.Heartbeat:Connect(function()
+    if ativado then return end
+
+    local pos = rootPart.Position
+
+    if (pos - TRIGGER_POS).Magnitude < 60 then
+        ativado = true
+
+        print("📍 Trigger detectado!")
+
+        teleportSlime()
+    end
+end)
+
+print("🔥 Sistema Slime-only ativo!")
+
 
 local player = game:GetService("Players").LocalPlayer
 local remote = game:GetService("ReplicatedStorage")
