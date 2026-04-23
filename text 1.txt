@@ -165,3 +165,89 @@ local function teleportIlha()
         task.wait(0.4)
     end
 end
+
+local player = game:GetService("Players").LocalPlayer
+local remote = game:GetService("ReplicatedStorage")
+    :WaitForChild("BridgeNet")
+    :WaitForChild("dataRemoteEvent")
+
+-- ⚠️ Ajuste aqui o caminho correto do reset indicator (✓ ou imagem ON)
+local resetIndicator = player.PlayerGui.UI.HUD.RightButtons.TimeRewards.Background
+    :FindFirstChildWhichIsA("ImageLabel", true)
+
+-- Timer do claim (o "!" vermelho que aparece quando pode resetar)
+local claimTimer = player.PlayerGui.UI.HUD.RightButtons.TimeRewards.Background:FindFirstChild("Time", true) 
+                   or player.PlayerGui.UI.HUD.RightButtons.TimeRewards.Background:FindFirstChildWhichIsA("TextLabel", true)
+
+local resetCooldown = false
+
+local function doReset()
+    if resetCooldown then return end
+    resetCooldown = true
+
+    print("🔄 Resetando TimeRewards...")
+
+    local args = {
+        {
+            {
+                "General",
+                "TimeRewards",
+                "Reset",
+                n = 3
+            },
+            "\002"
+        }
+    }
+
+    remote:FireServer(unpack(args))
+
+    task.wait(5)   -- tempo de segurança após o reset
+    resetCooldown = false
+    print("✅ Reset finalizado")
+end
+
+-- Loop principal de detecção
+task.spawn(function()
+    while task.wait(1) do
+        local shouldReset = false
+
+        -- Verifica o indicador visual (✓ ou imagem ON)
+        if resetIndicator and resetIndicator.Visible then
+            shouldReset = true
+        end
+
+        -- Verifica também o timer (texto com "!" ou tempo zerado)
+        if claimTimer then
+            if claimTimer.Text:find("!") or claimTimer.Text == "0:00" or claimTimer.Text == "00:00" then
+                shouldReset = true
+            end
+        end
+
+        if shouldReset then
+            doReset()
+        end
+    end
+end)
+
+-- Check inicial
+task.spawn(function()
+    task.wait(1.5)
+    
+    local shouldReset = false
+    
+    if resetIndicator and resetIndicator.Visible then
+        shouldReset = true
+    end
+    
+    if claimTimer then
+        if claimTimer.Text:find("!") or claimTimer.Text == "0:00" or claimTimer.Text == "00:00" then
+            shouldReset = true
+        end
+    end
+    
+    if shouldReset then
+        doReset()
+    end
+end)
+
+print("✅ Script de Reset Separado carregado!")
