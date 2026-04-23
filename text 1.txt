@@ -103,7 +103,6 @@ local remote = game:GetService("ReplicatedStorage")
 	:WaitForChild("dataRemoteEvent")
 
 local rolls = {
-	"Swords Banner",
 	"Haki",
 	"Fruit",
 	"Dragon Power",
