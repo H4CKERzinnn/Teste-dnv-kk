@@ -1,283 +1,96 @@
-local player = game:GetService("Players").LocalPlayer
 local remote = game:GetService("ReplicatedStorage")
-    :WaitForChild("BridgeNet")
-    :WaitForChild("dataRemoteEvent")
-
-local timeNotif = player.PlayerGui.UI.HUD.RightButtons.TimeRewards.Background.Notification
-local achNotif = player.PlayerGui.UI.HUD.Left.Buttons.Container.Achievements.Background.Notification
-
-local busyRewards = false
-local busyAchievements = false
-
-local function claimOne(tipo, index)
-    for tentativa = 1, 3 do
-        local args = {
-            {
-                {
-                    "General",
-                    tipo,
-                    "Claim",
-                    index,
-                    n = 4
-                },
-                "\002"
-            }
-        }
-
-        remote:FireServer(unpack(args))
-        task.wait(0.6)
-
-    end
-end
-
-local function claimRewards(tipo)
-    for i = 1, 7 do
-        claimOne(tipo, i)
-        task.wait(0.5)
-    end
-end
-
-local function handleRewards()
-    if busyRewards then return end
-    busyRewards = true
-
-    print("Pegando rewards...")
-
-    claimRewards("TimeRewards")
-    claimRewards("DailyRewards")
-
-    task.wait(3)
-    busyRewards = false
-end
-
-local function handleAchievements()
-    if busyAchievements then return end
-    busyAchievements = true
-
-    print("Pegando conquistas...")
-
-    local args = {
-        {
-            {
-                "General",
-                "Achievements",
-                "ClaimAll",
-                n = 3
-            },
-            "\002"
-        }
-    }
-
-    remote:FireServer(unpack(args))
-
-    task.wait(2)
-    busyAchievements = false
-end
-
-timeNotif:GetPropertyChangedSignal("Visible"):Connect(function()
-    if timeNotif.Visible then
-        handleRewards()
-    end
-end)
-
-achNotif:GetPropertyChangedSignal("Visible"):Connect(function()
-    if achNotif.Visible then
-        handleAchievements()
-    end
-end)
-
-task.spawn(function()
-    task.wait(1)
-
-    if timeNotif.Visible then
-        handleRewards()
-    end
-
-    if achNotif.Visible then
-        handleAchievements()
-    end
-end)
-
-local remote = game:GetService("ReplicatedStorage")
-	:WaitForChild("BridgeNet")
+	:WaitForChild("ffrostflame_bridgenet2@1.0.0")
 	:WaitForChild("dataRemoteEvent")
 
-local rolls = {
-	"Haki",
-	"Fruit",
-	"Dragon Power",
-	"Race",
-	"Slime Power",
-	"Primordial Demon"
+local potions = {
+	"Ghost",
+	"Drop",
+	"Luck",
+	"Damage",
+	"Energy"
+}
+
+local function usePotion(name)
+	local args = {
+		{
+			{
+				"ItemSystem",
+				"Use",
+				name.."Potion4",
+				n = 3
+			},
+			"\002"
+		}
+	}
+	remote:FireServer(unpack(args))
+end
+
+while true do
+	for _, name in ipairs(potions) do
+		usePotion(name)
+		task.wait(1) -- 🔥 delay pra não bugar
+	end
+
+	task.wait(60) -- ⏱️ 1 minuto pra repetir tudo
+end
+
+-- DragonBox UseAll
+
+local remote = game:GetService("ReplicatedStorage")
+	:WaitForChild("ffrostflame_bridgenet2@1.0.0")
+	:WaitForChild("dataRemoteEvent")
+
+while true do
+	local args = {
+		{
+			{
+				"ItemSystem",
+				"UseAll",
+				"DragonBox",
+				n = 3
+			},
+			"\002"
+		}
+	}
+
+	remote:FireServer(unpack(args))
+	task.wait(60)
+end
+
+-- Potion tier 3 -> 4
+
+local remote = game:GetService("ReplicatedStorage")
+	:WaitForChild("ffrostflame_bridgenet2@1.0.0")
+	:WaitForChild("dataRemoteEvent")
+
+local potions = {
+	"Damage",
+	"Ghost",
+	"Luck",
+	"Drop",
+	"Energy"
 }
 
 while true do
-	for _, rollName in ipairs(rolls) do
+	for _, name in ipairs(potions) do
 		local args = {
 			{
 				{
-					"General",
-					rollName == "Swords Banner" and "Banner" or "Gacha",
-					"Roll",
-					rollName,
-					rollName == "Swords Banner" and nil or {},
-					n = rollName == "Swords Banner" and 4 or 5
+					"ExchangeSystem",
+					"Make",
+					"Potion",
+					"Tier 3",
+					name .. "Potion3",
+					1,
+					n = 6
 				},
 				"\002"
 			}
 		}
 
 		remote:FireServer(unpack(args))
-		task.wait(0.004) -- tempo entre cada roll
+		task.wait(1) -- 🔥 espera 1 segundo entre cada envio
 	end
+
+	task.wait(60) -- espera 1 minuto pra repetir tudo
 end
-
-
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local player = Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local rootPart = character:WaitForChild("HumanoidRootPart")
-
-player.CharacterAdded:Connect(function(c)
-    character = c
-    rootPart = c:WaitForChild("HumanoidRootPart")
-end)
-
--- 📍 ponto de ativação
-local TRIGGER_POS = Vector3.new(27385, 787, -15848)
-
-local ativado = false
-
--- 🔥 TP Slime Verse
-local function teleportSlime()
-    local args = {
-        {
-            {
-                "Player",
-                "Teleport",
-                "Teleport",
-                "Slime Verse",
-                2,
-                n = 5
-            },
-            "\002"
-        }
-    }
-
-    for i = 1, 4 do
-        pcall(function()
-            ReplicatedStorage:WaitForChild("BridgeNet")
-                :WaitForChild("dataRemoteEvent")
-                :FireServer(unpack(args))
-        end)
-
-        task.wait(0.4)
-    end
-end
-
--- 🧠 detector de posição
-RunService.Heartbeat:Connect(function()
-    if ativado then return end
-
-    local pos = rootPart.Position
-
-    if (pos - TRIGGER_POS).Magnitude < 60 then
-        ativado = true
-
-        print("📍 Trigger detectado!")
-
-        teleportSlime()
-    end
-end)
-
-print("🔥 Sistema Slime-only ativo!")
-
-
-local player = game:GetService("Players").LocalPlayer
-local remote = game:GetService("ReplicatedStorage")
-    :WaitForChild("BridgeNet")
-    :WaitForChild("dataRemoteEvent")
-
--- ⚠️ Ajuste aqui o caminho correto do reset indicator (✓ ou imagem ON)
-local resetIndicator = player.PlayerGui.UI.HUD.RightButtons.TimeRewards.Background
-    :FindFirstChildWhichIsA("ImageLabel", true)
-
--- Timer do claim (o "!" vermelho que aparece quando pode resetar)
-local claimTimer = player.PlayerGui.UI.HUD.RightButtons.TimeRewards.Background:FindFirstChild("Time", true) 
-                   or player.PlayerGui.UI.HUD.RightButtons.TimeRewards.Background:FindFirstChildWhichIsA("TextLabel", true)
-
-local resetCooldown = false
-
-local function doReset()
-    if resetCooldown then return end
-    resetCooldown = true
-
-    print("🔄 Resetando TimeRewards...")
-
-    local args = {
-        {
-            {
-                "General",
-                "TimeRewards",
-                "Reset",
-                n = 3
-            },
-            "\002"
-        }
-    }
-
-    remote:FireServer(unpack(args))
-
-    task.wait(5)   -- tempo de segurança após o reset
-    resetCooldown = false
-    print("✅ Reset finalizado")
-end
-
--- Loop principal de detecção
-task.spawn(function()
-    while task.wait(1) do
-        local shouldReset = false
-
-        -- Verifica o indicador visual (✓ ou imagem ON)
-        if resetIndicator and resetIndicator.Visible then
-            shouldReset = true
-        end
-
-        -- Verifica também o timer (texto com "!" ou tempo zerado)
-        if claimTimer then
-            if claimTimer.Text:find("!") or claimTimer.Text == "0:00" or claimTimer.Text == "00:00" then
-                shouldReset = true
-            end
-        end
-
-        if shouldReset then
-            doReset()
-        end
-    end
-end)
-
--- Check inicial
-task.spawn(function()
-    task.wait(1.5)
-    
-    local shouldReset = false
-    
-    if resetIndicator and resetIndicator.Visible then
-        shouldReset = true
-    end
-    
-    if claimTimer then
-        if claimTimer.Text:find("!") or claimTimer.Text == "0:00" or claimTimer.Text == "00:00" then
-            shouldReset = true
-        end
-    end
-    
-    if shouldReset then
-        doReset()
-    end
-end)
-
-print("✅ Script de Reset Separado carregado!")
