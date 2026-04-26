@@ -7,8 +7,7 @@ local potions = {
 	"Drop",
 	"Luck",
 	"Damage",
-	"Energy",
-    "Easter"
+	"Energy"
 }
 
 local function usePotion(name)
