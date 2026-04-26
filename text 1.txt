@@ -7,7 +7,8 @@ local potions = {
 	"Drop",
 	"Luck",
 	"Damage",
-	"Energy"
+	"Energy",
+    "Easter"
 }
 
 local function usePotion(name)
@@ -31,7 +32,7 @@ while true do
 		task.wait(1) -- 🔥 delay pra não bugar
 	end
 
-	task.wait(60) -- ⏱️ 1 minuto pra repetir tudo
+	task.wait(30) -- ⏱️ 1 minuto pra repetir tudo
 end
 
 -- DragonBox UseAll
@@ -54,7 +55,7 @@ while true do
 	}
 
 	remote:FireServer(unpack(args))
-	task.wait(60)
+	task.wait(45)
 end
 
 -- Potion tier 3 -> 4
