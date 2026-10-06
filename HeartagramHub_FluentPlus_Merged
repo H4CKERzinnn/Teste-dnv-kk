@@ -1,12 +1,3 @@
---[[
-    Heartagram Hub - Converted to FluentPlus
-    Original MM2 logic preserved | UI rebuilt with FluentPlus
-    Minimizer already Draggable
-]]
-
-if _G.Heartagram then return end
-_G.Heartagram = true
-
 local Fluent = loadstring(game:HttpGet("https://raw.githubusercontent.com/discoart/FluentPlus/refs/heads/main/Beta.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
 local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
